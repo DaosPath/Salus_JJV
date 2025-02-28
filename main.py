@@ -293,9 +293,9 @@ class VentanaProductos(QWidget):
         super().__init__(parent)
         self.sesion = SessionLocal()
         self.setLayout(QVBoxLayout())
-        # Buscador de productos
+        # Buscador de productos para vender
         self.busquedaLineEdit = QLineEdit()
-        self.busquedaLineEdit.setPlaceholderText("Buscar por nombre...")
+        self.busquedaLineEdit.setPlaceholderText("Buscar producto para vender...")
         self.busquedaLineEdit.textChanged.connect(self.cargar_productos)
         self.layout().addWidget(self.busquedaLineEdit)
         # Tabla de productos (9 columnas)
@@ -470,7 +470,6 @@ class VentanaInventario(QWidget):
         super().__init__(parent)
         self.sesion = SessionLocal()
         self.setLayout(QVBoxLayout())
-        # Se agrega un buscador para inventario
         self.busquedaLineEdit = QLineEdit()
         self.busquedaLineEdit.setPlaceholderText("Buscar en inventario por producto...")
         self.busquedaLineEdit.textChanged.connect(self.cargar_inventario)
@@ -578,9 +577,8 @@ class VentanaVentas(QWidget):
         self.setLayout(QVBoxLayout())
         if not self.obtener_caja_abierta():
             QMessageBox.warning(self, "Caja", "La caja no está abierta. Abra la caja antes de vender.")
-        # Buscador para ventas (filtra por nombre del producto)
         self.busquedaLineEdit = QLineEdit()
-        self.busquedaLineEdit.setPlaceholderText("Buscar venta por producto...")
+        self.busquedaLineEdit.setPlaceholderText("Buscar producto para vender...")
         self.busquedaLineEdit.textChanged.connect(self.solicitarProductos)
         self.layout().addWidget(self.busquedaLineEdit)
         formLayout = QHBoxLayout()
