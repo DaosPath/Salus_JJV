@@ -7,10 +7,9 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QGridLayout, QPushButton, QTableWidget, QTableWidgetItem, QDialog,
     QFormLayout, QLineEdit, QMessageBox, QComboBox, QHeaderView, QLabel, QSpinBox,
-    QFileDialog
+    QFileDialog, QFrame
 )
-from PyQt6.QtGui import QAction, QFont, QIcon, QPainter
-from PyQt6.QtPrintSupport import QPrinter, QPrintDialog
+from PyQt6.QtGui import QAction, QFont, QIcon
 from sqlalchemy import create_engine, Column, Integer, String, Numeric, Date, DateTime, ForeignKey
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.exc import IntegrityError
@@ -97,7 +96,7 @@ def generar_reporte_excel(caja):
     query = session.query(Venta, DetalleVenta, Producto)\
         .join(DetalleVenta, Venta.id == DetalleVenta.venta_id)\
         .join(Producto, Producto.id == DetalleVenta.producto_id)\
-        .filter(Venta.caja_id == caja.id).all()
+        .filter(Venta.caja_id == caja.id).order_by(Venta.fecha.asc()).all()
     detalle_list = []
     for venta, detalle, producto in query:
         detalle_list.append({
@@ -184,30 +183,77 @@ def exportar_base_datos_json():
             QMessageBox.warning(None, "Exportar Base de Datos", f"Error al exportar: {str(e)}")
     session.close()
 
+# ReportePreviewDialog mejorada y estilizada
 class ReportePreviewDialog(QDialog):
     def __init__(self, caja, parent=None):
         super().__init__(parent)
         self.caja = caja
         self.setWindowTitle(f"Previsualización Reporte - Caja ID: {caja.id}")
-        self.resize(700, 500)
+        self.resize(800, 600)
+        
         layout = QVBoxLayout(self)
+        
+        # Encabezado resumen con HTML
+        monto_apertura = float(caja.monto_apertura)
+        total_ventas = float(caja.total_ventas) if caja.total_ventas is not None else 0.0
+        monto_cierre = float(caja.monto_cierre) if caja.monto_cierre is not None else 0.0
+        saldo_final = monto_apertura + total_ventas
+
+        summary_text = (
+            f"<div style='text-align:center; font-family: Arial; font-size:14px; padding:10px;'>"
+            f"<b>Caja ID:</b> {caja.id}<br>"
+            f"<b>Fecha Apertura:</b> {caja.fecha_apertura.strftime('%Y-%m-%d %H:%M:%S')}<br>"
+            f"<b>Monto Apertura:</b> {monto_apertura:.2f}<br>"
+            f"<b>Fecha Cierre:</b> {caja.fecha_cierre.strftime('%Y-%m-%d %H:%M:%S') if caja.fecha_cierre else 'Caja abierta'}<br>"
+            f"<b>Monto Cierre:</b> {monto_cierre:.2f}<br>"
+            f"<b>Total Ventas:</b> {total_ventas:.2f}<br>"
+            f"<b>Saldo Final:</b> {saldo_final:.2f}"
+            f"</div>"
+        )
+        self.labelSummary = QLabel(summary_text)
+        self.labelSummary.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.labelSummary)
+        
+        # Línea horizontal para separar el resumen
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
+        layout.addWidget(line)
+        
+        # Tabla de detalle de ventas
         self.tablaDetalle = QTableWidget()
         self.tablaDetalle.setColumnCount(6)
-        self.tablaDetalle.setHorizontalHeaderLabels(["Venta ID", "Fecha Venta", "Producto", "Cantidad", "Precio Venta", "Subtotal"])
+        self.tablaDetalle.setHorizontalHeaderLabels(
+            ["Venta ID", "Fecha Venta", "Producto", "Cantidad", "Precio Venta", "Subtotal"]
+        )
         header = self.tablaDetalle.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        # Estilo básico para la tabla
+        self.tablaDetalle.setStyleSheet("QTableWidget {font-family: Arial; font-size: 12px;}")
         layout.addWidget(self.tablaDetalle)
+        
+        # Botones de acción
+        btnLayout = QHBoxLayout()
+        self.btnExportar = QPushButton("Exportar a Excel")
+        self.btnExportar.setStyleSheet("padding:5px; font-size:12px;")
+        self.btnExportar.clicked.connect(self.generar_reporte)
+        self.btnCerrar = QPushButton("Cerrar")
+        self.btnCerrar.setStyleSheet("padding:5px; font-size:12px;")
+        self.btnCerrar.clicked.connect(self.accept)
+        btnLayout.addStretch()
+        btnLayout.addWidget(self.btnExportar)
+        btnLayout.addWidget(self.btnCerrar)
+        layout.addLayout(btnLayout)
+        
         self.cargar_detalle()
-        btnExportar = QPushButton("Exportar a Excel")
-        btnExportar.clicked.connect(self.generar_reporte)
-        layout.addWidget(btnExportar)
-    
+
     def cargar_detalle(self):
         session = SessionLocal()
         query = session.query(Venta, DetalleVenta, Producto)\
             .join(DetalleVenta, Venta.id == DetalleVenta.venta_id)\
             .join(Producto, Producto.id == DetalleVenta.producto_id)\
-            .filter(Venta.caja_id == self.caja.id).all()
+            .filter(Venta.caja_id == self.caja.id)\
+            .order_by(Venta.fecha.asc()).all()
         self.tablaDetalle.setRowCount(len(query))
         for i, (venta, detalle, producto) in enumerate(query):
             self.tablaDetalle.setItem(i, 0, QTableWidgetItem(str(venta.id)))
@@ -217,7 +263,7 @@ class ReportePreviewDialog(QDialog):
             self.tablaDetalle.setItem(i, 4, QTableWidgetItem(str(producto.precio_venta)))
             self.tablaDetalle.setItem(i, 5, QTableWidgetItem(str(detalle.subtotal)))
         session.close()
-    
+
     def generar_reporte(self):
         generar_reporte_excel(self.caja)
 
@@ -293,12 +339,10 @@ class VentanaProductos(QWidget):
         super().__init__(parent)
         self.sesion = SessionLocal()
         self.setLayout(QVBoxLayout())
-        # Buscador de productos para vender
         self.busquedaLineEdit = QLineEdit()
         self.busquedaLineEdit.setPlaceholderText("Buscar producto para vender...")
         self.busquedaLineEdit.textChanged.connect(self.cargar_productos)
         self.layout().addWidget(self.busquedaLineEdit)
-        # Tabla de productos (9 columnas)
         self.tabla = QTableWidget()
         self.tabla.setColumnCount(9)
         self.tabla.setHorizontalHeaderLabels(["ID", "Nombre", "Descripción", "Precio Compra", "Precio Venta", "Inventario", "Precio Absoluto", "Categoría", "Código Barras"])
@@ -499,7 +543,10 @@ class VentanaInventario(QWidget):
         busqueda = self.busquedaLineEdit.text().strip().lower()
         entradas = self.sesion.query(InventarioEntry).all()
         if busqueda:
-            entradas = [e for e in entradas if busqueda in (self.sesion.query(Producto).filter_by(id=e.producto_id).first().nombre.lower() if self.sesion.query(Producto).filter_by(id=e.producto_id).first() else "")]
+            entradas = [e for e in entradas if busqueda in (
+                self.sesion.query(Producto).filter_by(id=e.producto_id).first().nombre.lower() 
+                if self.sesion.query(Producto).filter_by(id=e.producto_id).first() else ""
+            )]
         self.tabla.setRowCount(len(entradas))
         for i, entry in enumerate(entradas):
             self.tabla.setItem(i, 0, QTableWidgetItem(str(entry.id)))
@@ -762,9 +809,10 @@ class VentanaCaja(QDialog):
         self.caja_abierta = self.obtener_caja_abierta()
         if self.caja_abierta:
             self.labelInfo = QLabel(
-                f"Caja abierta desde: {self.caja_abierta.fecha_apertura.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"Caja abierta desde: {self.caja_abierta.fecha_apertura.strftime('%Y-%m-%d %H:%M:%S')}<br>"
                 f"Monto Apertura: {self.caja_abierta.monto_apertura:.2f}"
             )
+            self.labelInfo.setTextFormat(Qt.TextFormat.RichText)
             self.layout.addWidget(self.labelInfo)
             self.inputMontoCierre = QLineEdit()
             self.inputMontoCierre.setPlaceholderText("Ingrese Monto Cierre (opcional)")
@@ -810,7 +858,7 @@ class VentanaCaja(QDialog):
                     Venta.fecha <= hoy
                 ).all()
                 total = sum(v.total for v in ventas)
-                saldo_final = float(caja.monto_apertura) + total
+                saldo_final = float(caja.monto_apertura) + float(total)
                 monto_cierre = saldo_final
             else:
                 monto_cierre = float(self.inputMontoCierre.text())
